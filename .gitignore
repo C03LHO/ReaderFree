@@ -1,0 +1,61 @@
+# --- Biblioteca gerada (livros processados) ---
+library/
+!library/.gitkeep
+
+# --- Python ---
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+next-env.d.ts
+
+# --- Service worker gerado pelo next-pwa ---
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/worker-*.js
+frontend/public/sw.js.map
+frontend/public/workbox-*.js.map
+frontend/public/worker-*.js.map
+
+# --- Modelos baixados / caches de IA ---
+# Ficam em ~/.cache por default; listamos aqui caso sejam copiados p/ o repo
+models/
+*.pt
+*.bin
+*.safetensors
+.cache/
+
+# --- Vozes de referência (privadas) ---
+voices/
+!voices/.gitkeep
+
+# --- Editores / SO ---
+.vscode/
+!.vscode/settings.example.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Logs e temporários ---
+*.log
+tmp/
+temp/

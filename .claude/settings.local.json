@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(python -c \"import click, rich; print\\('ok'\\)\")",
+      "Bash(python -m pip install --user click rich)",
+      "Bash(python pipeline.py --help)",
+      "Bash(pnpm create *)"
+    ]
+  }
+}
