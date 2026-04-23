@@ -4,7 +4,14 @@
 capítulos, sanitização pré-TTS, flag `--chapters-only`). Este é um documento de
 **decisão**, não de implementação — quando aprovado, vira o plano.
 
-**Status:** rascunho para revisão. Aguardando aprovação antes de escrever código.
+**Status:** v2, revisado após feedback. Mudanças principais desta revisão:
+
+- OCR deixa de rodar por default; vira flag `--auto-ocr` opt-in (§ 1).
+- Split de capítulo gigante passa de critério em minutos para critério em
+  palavras, com quebra em fronteira de parágrafo (§ 3).
+- Skip de `linear="no"` passa a logar explicitamente o item pulado (§ 2).
+- Nova seção sobre EPUBs mal-formados (§ 2.4).
+- Fase 1.5 detalhada com lista explícita de entregáveis (§ 6.1).
 
 ---
 
@@ -67,28 +74,49 @@ TTS adivinha razoavelmente bem.
 
 ### Detecção de PDF escaneado
 
-**Decisão proposta: rodar `ocrmypdf --skip-text` incondicionalmente no input.**
+**Decisão proposta: heurístico chars/página + falha cedo com instrução; OCR
+automático só atrás da flag opt-in `--auto-ocr`.**
 
-O [`ocrmypdf`](https://ocrmypdf.readthedocs.io/en/latest/introduction.html)
-detecta automaticamente se cada página já tem camada de texto e pula OCR nessas
-páginas. `--skip-text` / `--mode skip` é idempotente em PDFs "born-digital" — roda
-rápido e não mexe no arquivo. Em PDFs escaneados, cria a camada de texto.
-
-Isso elimina a necessidade da heurística "chars/página < 100" proposta
-originalmente. O heurístico é útil só para **avisar o usuário** se o input for
-escaneado e ele não tiver `ocrmypdf` instalado.
+`ocrmypdf` arrasta Tesseract, Ghostscript e qpdf — ~300 MB de deps nativas que
+>95 % dos livros não vão precisar. Mesmo com `--skip-text` o processo rasteriza
+cada página antes de decidir pular, o que custa minutos num livro grande sem
+ganho algum. Default agressivo é errado aqui.
 
 **Pipeline proposto:**
 
-1. Se `ocrmypdf` no PATH: rodar `ocrmypdf --skip-text --language por input.pdf
-   temp.pdf` e extrair de `temp.pdf`.
-2. Se `ocrmypdf` não está disponível: extrair direto com pypdf. Se
-   `len(texto) / num_páginas < 100`, avisar "parece escaneado; instale ocrmypdf
-   para OCR automático" e abortar (não gerar audiobook vazio).
+1. Extrair direto com pypdf.
+2. Se `len(texto) / num_páginas >= 100`: seguir normal.
+3. Se `< 100`: abortar com `UsageError` apontando solução exata —
+   `"PDF parece escaneado (só X chars/página extraídos). Rode
+   'ocrmypdf entrada.pdf saida.pdf' antes e reaplique o pipeline com saida.pdf.
+   Ou passe --auto-ocr para invocar automaticamente se ocrmypdf estiver no PATH."`
+4. Flag `--auto-ocr` opt-in: quando presente e `ocrmypdf` no PATH, rodar
+   `ocrmypdf --skip-text --language por input.pdf temp.pdf` antes da extração.
 
-Limiar 100 chars/página é conservador mas OK — uma página de livro típica tem
-1500–2500 chars. Páginas de front matter (cover, rosto) são as únicas exceções
-legítimas com pouco texto, e são poucas.
+**Por que o heurístico é "3 linhas que não são dívida técnica":**
+
+- Livro típico: 1500–2500 chars/página. Limiar 100 é uma ordem de grandeza
+  abaixo disso.
+- Front matter (capa, rosto, dedicatória) pode ter <100, mas são 2–4 páginas em
+  meio a 200+ — a média do livro inteiro não cai abaixo de 100 por causa delas.
+- Falso positivo teórico: livro 100 % composto de imagens com legenda curta
+  (álbum fotográfico). Não é nosso caso de uso.
+
+**Alternativas consideradas (e rejeitadas).**
+
+1. **Rodar `ocrmypdf --skip-text` incondicionalmente.** Proposta da v1 do memo.
+   Elegante em teoria ("OCR decide sozinho"), mas custa deps pesadas + tempo de
+   rasterização a cada livro. Rejeitada conforme feedback.
+2. **Detectar via camada de fonte embutida (`/Font` objects no PDF).** Robustez
+   idêntica ao heurístico chars/página, mas complexidade muito maior —
+   pypdf expõe isso, mas a lógica vira 30 linhas vs 3. Não compensa.
+
+**Fallback para livros sem bookmarks.** Pypdf expõe `reader.outline` (vazio em
+PDFs sem outline). Quando vazio, tentar regex de heading sobre o texto completo:
+`^(CAPÍTULO|Capítulo)\s+(\d+|[IVXLCDM]+)\b` e `^(\d+)\.\s+[A-ZÁÉÍÓÚÀÃÕÂÊÎÔÛÇ]`.
+Se matches ≥ 2 e espaçados razoavelmente (>500 chars entre si), usar como
+capítulos. Senão, **capítulo único**. Não tentar ser esperto demais — livro sem
+TOC e sem heading óbvio ainda pode ser escutado como faixa única.
 
 **Fallback para livros sem bookmarks.** Pypdf expõe `reader.outline` (vazio em
 PDFs sem outline). Quando vazio, tentar regex de heading sobre o texto completo:
@@ -111,7 +139,8 @@ features — não valem o custo de sair do PyPI principal.
 
 ### Tratamento de `spine linear="no"`
 
-**Decisão proposta: ignorar por default, com flag `--include-auxiliary` opcional.**
+**Decisão proposta: ignorar por default com log explícito; flag
+`--include-auxiliary` para override.**
 
 A spec EPUB 3 define `linear="no"` como **conteúdo auxiliar acessado fora da
 sequência** — notas, apêndices, respostas
@@ -123,6 +152,17 @@ Books abre esses itens em janela sobreposta, não inline
 Para audiobook: incluir apêndices no meio da narração quebra a experiência.
 Ignorar é o padrão correto. Flag `--include-auxiliary` permite quem quer fazer
 dump completo (ex: livro técnico onde os apêndices importam).
+
+**Adendo de log.** Ao ignorar, o CLI imprime uma linha por item pulado com o
+título extraído (cascata de `<h1>` etc., mesma regra da próxima subseção):
+
+```
+[skipped] Apêndice A — Bibliografia (linear="no", use --include-auxiliary para incluir)
+[skipped] Notas do tradutor (linear="no", use --include-auxiliary para incluir)
+```
+
+Usuário precisa saber o que não entrou no audiobook — silencioso demais vira
+comportamento invisível.
 
 **Alternativa considerada:** incluir tudo por default e deixar usuário pular com
 `--chapters-only`. Rejeitada — quebra o default óbvio de "gerei o livro, plugo no
@@ -174,11 +214,45 @@ warning com o capítulo/posição e pular aquele nó.
 
 Na prática, raríssimo em livros em pt-br. Não justifica solução elaborada.
 
+### 2.4. EPUBs mal-formados
+
+EPUB na prática é zona de guerra: encoding declarado errado no XML header,
+tags HTML não fechadas, spine apontando pra `href` que não existe no
+manifest, entidades HTML inválidas, caracteres de controle no meio do texto.
+
+**Decisão proposta: recuperação tolerante, abortar só se nada for extraível.**
+
+- **Parser HTML:** `BeautifulSoup` com `lxml` e `features="lxml"` (já nas
+  deps). Lxml em modo HTML é intencionalmente tolerante — fecha tags
+  abertas, ignora entidades inválidas, retorna DOM utilizável.
+- **Encoding:** se o EPUB declara `encoding="utf-8"` mas o arquivo está em
+  latin-1 (comum em EPUBs brasileiros antigos), tentar decode por tentativa
+  na ordem `utf-8`, `cp1252`, `latin-1`. Não adicionar `chardet` como
+  dependência nova — as três codificações cobrem 99 % dos casos reais. Se
+  nenhuma funcionar, pular o arquivo com warning.
+- **Spine com href inexistente:** logar warning (`[warn] spine aponta para
+  'chapter_05.xhtml' mas o arquivo não existe no ZIP — capítulo pulado`) e
+  continuar com os próximos.
+- **Critério de aborto:** se `len(capítulos_recuperados) == 0`, abortar com
+  `UsageError` listando os warnings acumulados para diagnóstico. Senão,
+  seguir com o que foi recuperado e o resumo no fim da extração:
+  `12 capítulos extraídos, 2 pulados (ver warnings acima)`.
+
+**Por que não `chardet`.** Dependência extra que resolve um problema que
+três tentativas de decode já cobrem. Se aparecer um livro real com encoding
+exótico que essa ordem não pega, reconsidero — mas adiar a decisão.
+
+**Alternativa considerada:** abortar no primeiro erro com mensagem clara e
+exigir que o usuário conserte o EPUB antes. Rejeitada por dois motivos:
+(a) usuário não tem ferramenta fácil pra consertar EPUB mal-formado; (b) em
+90 % dos casos o livro é legível com 1–2 capítulos pulados, melhor entregar
+isso do que zero.
+
 ---
 
 ## 3. Segmentação em capítulos no `book.json`
 
-### Decisão proposta: um MP3 por capítulo, com **split automático quando >1h**
+### Decisão proposta: split automático em **~8000 palavras**, quebrando em fronteira de parágrafo
 
 O modelo atual (capítulos independentes, cada um com seu MP3/VTT) **escala bem
 nos dois extremos que o usuário levantou**:
@@ -188,34 +262,57 @@ nos dois extremos que o usuário levantou**:
   até 60 % do disco
   ([WebKit — Updates to Storage Policy](https://webkit.org/blog/14403/updates-to-storage-policy/))).
   Seek dentro de faixa curta é instantâneo.
-- **3 capítulos longos (80k palavras ≈ 10 h cada):** 3 arquivos de ~432 MB cada
-  (96 kbps). **Aqui quebra.** Seek em MP3 CBR de 400 MB via `<audio>` no iOS é
-  aceitável mas lento (2–5 s); em VBR fica pior.
+- **3 capítulos longos (80 000 palavras ≈ 10 h cada):** 3 arquivos de ~432 MB
+  cada (96 kbps). **Aqui quebra.** Seek em MP3 CBR de 400 MB via `<audio>` no
+  iOS é aceitável mas lento (2–5 s); em VBR fica pior.
 
-**Proposta: split por capítulo se a duração estimada passar de 60 min.**
-Arquivos gerados: `chapter_05_part_01.mp3`, `chapter_05_part_02.mp3`, cada um
-com seu VTT independente. Entrada no `book.json` ganha `part: 1` e `total_parts:
-3`, mantendo `id` do capítulo igual para todas as partes.
+**Critério de split: palavras, não minutos.** O que queremos limitar é tamanho
+do arquivo MP3 (cache no iPhone + responsividade do seek do `<audio>`) e tamanho
+do VTT (memória pra renderizar spans por palavra no frontend). Minutos variam
+com velocidade do leitor (0.75×–2×), com voz clonada, com densidade do conteúdo
+(diálogo rápido vs exposição densa) — é proxy instável. Palavras mapeiam direto
+pra duração de áudio em velocidade normal e pra tamanho do VTT.
 
-**Por quê 60 min:** mantém arquivos em ~43 MB, seek quase instantâneo, e ainda
-dá uma divisão natural para o usuário ("parei na parte 2 do capítulo 5").
+**Limiar: 8000 palavras por parte.** Em velocidade normal (~150 wpm) dá ≈45–55
+min e ~43 MB de MP3 a 96 kbps. Em 1.5× fica ~30 min. Seek em arquivo desse
+tamanho é instantâneo no Safari iOS.
+
+**Quebra em fronteira de parágrafo, nunca no meio de sentença.** Procurar a
+fronteira de parágrafo mais próxima do limiar (pode cair em 7600 ou 8400
+palavras dependendo do texto); nunca dividir dentro de um parágrafo. Se o
+parágrafo mais próximo ficar mais de 20 % longe do alvo, cair para quebra em
+fronteira de sentença como degradação.
+
+**Tolerância para não dividir desnecessariamente.** Se o capítulo tem ≤9000
+palavras (8000 × 1.125), não dividir — o overhead de metadata extra + o jump
+entre dois arquivos durante playback não compensa ganhar só 500–1000 palavras
+de espaço. Capítulos de 9001+ dividem em 2 partes equilibradas, 17 001+ em 3,
+etc., procurando sempre balanceamento com tolerância de 10 % por parte.
+
+**Arquivos gerados e schema.** `chapter_05_part_01.mp3` /
+`chapter_05_part_01.vtt`, `chapter_05_part_02.mp3` / `chapter_05_part_02.vtt`,
+cada par independente. Entrada no `book.json` ganha `part` e `total_parts`,
+mantendo `id` do capítulo igual para todas as partes. O formato de saída é o
+mesmo que a v1 propunha — o que mudou foi só o racional do quando dividir.
 
 **Alternativas consideradas.**
 
-1. **Um MP3 gigante com ID3 CHAP frames.** ID3 suporta capítulos internos
+1. **Critério fixo em minutos (60 min), proposta da v1.** Rejeitada — proxy
+   instável conforme acima.
+2. **Um MP3 gigante com ID3 CHAP frames.** ID3 suporta capítulos internos
    ([id3.org — Chapter Frame Addendum](https://id3.org/id3v2-chapters-1.0)). Mas
    o `<audio>` do Safari iOS **não expõe** as chapter markers via Media Session
    API — só via reader custom. Teríamos que parsear ID3 no frontend. Complexidade
    alta para benefício marginal vs arquivos menores.
-2. **Sempre capítulo único por arquivo, sem split.** Aceitar seek lento. Rejeitada
-   — usuário específico levantou a preocupação e está certo.
+3. **Sempre capítulo único por arquivo, sem split.** Aceitar seek lento.
+   Rejeitada — usuário específico levantou a preocupação e está certo.
 
 ### Revisão ao schema de `book.json`
 
 Adicionar em cada entrada de capítulo:
 
-- `part` (int, opcional, default 1)
-- `total_parts` (int, opcional, default 1)
+- `part` (int, opcional, ausente quando capítulo não foi dividido)
+- `total_parts` (int, opcional, ausente quando capítulo não foi dividido)
 
 Capítulos não splitados ficam sem esses campos — retrocompatibilidade com livros
 da Fase 1 preservada.
@@ -294,21 +391,64 @@ pegar os primeiros 5 — atrito real.
 **Validação.** Se um capítulo pedido não existe (`--chapters-only 99` em livro de
 40), erro `UsageError` listando os disponíveis, não fallback silencioso.
 
+**Módulo isolado com testes.** O parsing fica em `backend/src/chapter_range.py`
+(função pura `parse_chapter_range(spec: str, total: int) -> set[int]`), não
+inline no `pipeline.py`. Testes unitários cobrem:
+
+- Item único (`"3"` → `{3}`).
+- Lista (`"1,3,5"` → `{1, 3, 5}`).
+- Range (`"1-3"` → `{1, 2, 3}`).
+- Combinação (`"1,3,5-7,10"` → `{1, 3, 5, 6, 7, 10}`).
+- Sobreposição (`"1-3,2-4"` → `{1, 2, 3, 4}`, sem duplicatas).
+- Range invertido (`"5-3"`) → `ValueError` com mensagem clara.
+- Zero ou negativo (`"0"`, `"-1"`) → `ValueError`.
+- Lixo não-numérico (`"abc"`, `"1-a"`) → `ValueError`.
+- Fora do range do livro (`"99"` com total=40) → `ValueError` listando o
+  disponível.
+- Espaços toleráveis (`" 1 , 3 - 5 "` → `{1, 3, 4, 5}`).
+
 ---
 
 ## 6. Revisões sugeridas à Fase 1
 
 Duas coisas que a pesquisa levantou e que valem a pena decidir agora.
 
-### 6.1. `book.json` — adicionar `part`/`total_parts`
+### 6.1. Fase 1.5 — `book.json` ganha `part`/`total_parts`
 
-**Proposta:** adicionar os campos **agora** (Fase 1.5, um commit pequeno) mesmo
-que nenhum livro atual use split. Motivo: a fixture de regressão do mock
-(`bras_cubas_excerpt.expected.vtt`) não é afetada, e quando a Fase 2 entrar com
-EPUBs de capítulo gigante, o schema já está pronto — evita migração.
+**Proposta:** fazer **agora**, num único commit isolado, antes da Fase 2. O
+custo é baixo e o benefício é evitar migração de schema quando EPUBs de
+capítulo gigante chegarem.
 
-**Trade-off:** gasta tempo agora vs. aguentar a mudança depois. Voto meu: fazer
-agora porque é barato (≤10 linhas de código + atualização de fixture de test_package).
+**Entregáveis do commit da Fase 1.5:**
+
+1. Em `backend/src/package.py`: aceitar `part` e `total_parts` opcionais por
+   capítulo em `write_book_json`. Quando ambos forem `None` (caso default de
+   capítulo não-dividido), os campos **não aparecem** no JSON — `null`
+   explícito adiciona ruído; ausência é o sinal semântico correto.
+2. Um teste novo em `backend/tests/test_package.py`: gera um `book.json` com
+   capítulo dividido em 3 partes, valida que cada entrada tem `part` e
+   `total_parts` corretos, e que um capítulo não-dividido na mesma chamada
+   não recebe os campos. Teste existente de `book.json` continua passando
+   sem mudança.
+3. README atualizado com o schema completo do `book.json` — um bloco pequeno
+   documentando `id`, `title`, `mp3_path`, `vtt_path`, `text_path`,
+   `duration_seconds`, `word_count`, `part?`, `total_parts?`.
+
+**Fixture de regressão do mock (`bras_cubas_excerpt.expected.vtt`):** não
+muda. O VTT esperado é palavra-por-palavra do excerto (119 cues, 45.6 s); o
+schema adicionado fica no `book.json`, não no VTT. O `chapter_01.mp3` e o
+`chapter_01.vtt` da fixture de Brás Cubas são curtos (46 s, 95 palavras) —
+não dividem. `test_mock_regression.py` continua passando byte-a-byte.
+
+**Confirmação antes de commitar.** Rodar a suite inteira, rodar o pipeline
+mock ponta-a-ponta na fixture, diffar o `book.json` gerado contra o da Fase
+1 — a única diferença esperada é reformatação possível pela lib
+`json.dump` (chaves novas ausentes não aparecem). Se aparecer diferença
+inesperada, investigar antes de commitar.
+
+**Trade-off:** gasta ~1h agora vs. aguentar refactor no meio da Fase 2. Voto
+meu: fazer agora. É barato, desacopla a mudança de schema da mudança de
+feature.
 
 ### 6.2. `sanitize.py` vs confiar 100 % no tokenizer do XTTS
 
@@ -328,21 +468,30 @@ contra o mock.
 
 ## Resumo das decisões para aprovação
 
-1. **PDF:** `pypdf` default, `pdfplumber` como `--pdf-engine` opcional; OCR via
-   `ocrmypdf --skip-text` incondicional quando disponível; fallback a
-   capítulo único sem TOC.
-2. **EPUB:** `ebooklib` oficial; `linear="no"` ignorado (flag
-   `--include-auxiliary` para override); título via cascata h1→h2→title→filename;
-   whitelist de tags textuais; notas inline removidas; mídia embutida avisa e
-   pula.
-3. **Split de capítulo gigante:** split em partes de 60 min. Schema de `book.json`
-   ganha `part`/`total_parts`.
+1. **PDF:** `pypdf` default, `pdfplumber` como `--pdf-engine` opcional;
+   detecção de PDF escaneado via heurístico chars/página < 100 com `UsageError`
+   instrutivo; OCR automático **só atrás de `--auto-ocr` opt-in** (Tesseract e
+   cia não entram no default). Fallback a capítulo único quando sem TOC.
+2. **EPUB:** `ebooklib` oficial; `linear="no"` ignorado por default **com log
+   explícito do item pulado** (flag `--include-auxiliary` para override); título
+   via cascata h1→h2→title→filename; whitelist de tags textuais; notas inline
+   removidas; mídia embutida avisa e pula; **recuperação tolerante para EPUBs
+   mal-formados** (lxml HTML mode + cascata de encoding utf-8/cp1252/latin-1 +
+   skip-com-warning de href inexistente; aborta só se zero capítulos
+   recuperados).
+3. **Split de capítulo gigante:** critério em **palavras, não minutos** — corta
+   a cada ~8000 palavras em fronteira de parágrafo, com tolerância de 1.125×
+   para não dividir desnecessariamente. Schema de `book.json` ganha
+   `part`/`total_parts` (ausentes quando capítulo não é dividido).
 4. **Sanitização pré-TTS:** módulo `sanitize.py` para unicode de controle,
    emojis, símbolos não-cobertos pelo tokenizer (setas, matemáticos, `R$`),
    aspas/dashes tipográficos. Números **ficam com o tokenizer do XTTS**.
-5. **`--chapters-only`:** aceita lista + ranges misturados (`1,3,5-7`).
-6. **Revisão da Fase 1:** adicionar `part`/`total_parts` ao `book.json` agora
-   (commit pequeno) para evitar migração depois.
+5. **`--chapters-only`:** aceita lista + ranges misturados (`1,3,5-7,10`), com
+   parsing isolado em `src/chapter_range.py` + testes unitários para
+   sobreposições (`1-3,2-4` → `{1,2,3,4}`) e inválidos (`5-3`, `0`, `abc`).
+6. **Fase 1.5 (revisão da Fase 1):** adicionar `part`/`total_parts` ao
+   `book.json` agora, num commit isolado com teste e README atualizados,
+   confirmando que a fixture de regressão do mock não muda.
 
 ---
 
