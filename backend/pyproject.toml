@@ -6,37 +6,40 @@ build-backend = "setuptools.build_meta"
 name = "readerfree-backend"
 version = "0.1.0"
 description = "Pipeline: extrai texto -> TTS (XTTS-v2) -> alinha (WhisperX) -> empacota MP3 + VTT"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 authors = [{ name = "ReaderFree" }]
 readme = { text = "Backend do ReaderFree — ver README.md na raiz.", content-type = "text/plain" }
 
+# ---- Leves: rodam em qualquer máquina, inclusive sem GPU ou com --mock.
+#      Versões fixadas (==) — o instalador Windows (Fase 7.5) depende disso.
 dependencies = [
-    # TTS
-    "coqui-tts>=0.24.0",
-    # Forced alignment por palavra
-    "whisperx>=3.1.1",
-    # Extração de texto
-    "pypdf>=4.3.0",
-    "ebooklib>=0.18",
-    "beautifulsoup4>=4.12.3",
-    # Áudio
-    "pydub>=0.25.1",
-    # NLP básico (tokenização de sentenças pt-br)
-    "nltk>=3.9",
-    # CLI e UI de terminal
-    "click>=8.1.7",
-    "rich>=13.7.1",
-    # Gravação de voz (Fase 3)
-    "sounddevice>=0.4.7",
-    "soundfile>=0.12.1",
-    "numpy>=1.26",
+    "click==8.1.7",
+    "rich==13.9.4",
+    "nltk==3.9.1",
+    "pypdf==5.1.0",
+    "EbookLib==0.18",
+    "beautifulsoup4==4.12.3",
+    "lxml==5.3.0",
+    "pydub==0.25.1",
+    "soundfile==0.12.1",
+    "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
+# ---- Pesadas: modelos de IA. Só instala na máquina-alvo (PC com GPU).
+#      Rode com:   uv pip install -e .[tts]
+tts = [
+    "torch==2.3.1",
+    "torchaudio==2.3.1",
+    "coqui-tts==0.24.3",
+    "whisperx==3.3.1",
+    "sounddevice==0.5.1",
+]
+# ---- Dev: testes + lint. Roda em qualquer máquina, sem modelos.
 dev = [
-    "pytest>=8.2",
-    "pytest-cov>=5.0",
-    "ruff>=0.5",
+    "pytest==8.3.3",
+    "pytest-cov==5.0.0",
+    "ruff==0.7.4",
 ]
 
 [project.scripts]

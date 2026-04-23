@@ -1,0 +1,15 @@
+# Configuração opcional do ReaderFree. Copie para:
+#   Windows: %LOCALAPPDATA%\ReaderFree\config.toml
+#   macOS:   ~/Library/Application Support/ReaderFree/config.toml
+#   Linux:   ~/.local/share/ReaderFree/config.toml
+# Ou aponte a variável de ambiente READERFREE_CONFIG para este arquivo.
+#
+# Variáveis de ambiente têm precedência sobre este arquivo.
+
+[paths]
+# Onde os livros gerados ficam salvos. Cada livro é uma subpasta.
+# library_dir = "D:/Audiobooks"
+
+# Onde os modelos de IA (XTTS-v2, WhisperX) são cacheados após download.
+# Primeira execução baixa ~5GB. Subsequentes reusam.
+# models_dir = "D:/ReaderFree/models"
