@@ -157,10 +157,14 @@ def _decode_with_fallback(data: bytes) -> str | None:
 
 def _parse_html(html: str, fallback_title: str) -> tuple[str, str]:
     """Parse de uma página HTML do EPUB. Retorna (title, text)."""
-    from bs4 import BeautifulSoup  # lazy
+    from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning  # lazy
 
     # lxml em modo HTML é tolerante a tags abertas, entidades inválidas.
-    soup = BeautifulSoup(html, "lxml")
+    # Suprimimos o warning quando o EPUB é XHTML bem-formado — não é problema,
+    # nosso parser tolerante por design.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", XMLParsedAsHTMLWarning)
+        soup = BeautifulSoup(html, "lxml")
 
     # Título: cascata h1 → h2 → <title> → fallback.
     title = (
@@ -218,8 +222,10 @@ def _quick_title(item) -> str | None:
     html = _decode_with_fallback(html_bytes)
     if html is None:
         return None
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "lxml")
+    from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", XMLParsedAsHTMLWarning)
+        soup = BeautifulSoup(html, "lxml")
     return (
         _first_text(soup, "h1")
         or _first_text(soup, "h2")
