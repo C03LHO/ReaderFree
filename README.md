@@ -145,12 +145,56 @@ Tudo em `library/<nome-do-livro>/`:
 
 ```
 library/meu_livro/
-├── book.json           # Metadados + lista de capítulos
-├── chapter_01.mp3      # Áudio sintetizado
-├── chapter_01.vtt      # Timestamps por palavra (WebVTT)
-├── chapter_01.txt      # Texto original do capítulo
+├── book.json                     # Metadados + lista de capítulos
+├── chapter_01.mp3                # Áudio sintetizado
+├── chapter_01.vtt                # Timestamps por palavra (WebVTT)
+├── chapter_01.txt                # Texto original do capítulo
+├── chapter_05_part_01.mp3        # Capítulos longos são divididos em partes
+├── chapter_05_part_01.vtt        # (Fase 2+, ver `docs/phase2-research.md` § 3)
 └── ...
 ```
+
+### Schema do `book.json`
+
+```jsonc
+{
+  "id": "memorias-postumas",                  // slug do título
+  "title": "Memórias Póstumas de Brás Cubas",
+  "author": "Machado de Assis",               // string | null
+  "created_at": "2026-04-25T12:34:56+00:00",  // ISO 8601 UTC
+  "duration_seconds": 8175.6,                 // soma de todos os capítulos
+  "mock": false,                              // true se gerado com --mock
+  "chapters": [
+    {
+      "id": "memorias-postumas-01",
+      "title": "Ao leitor",
+      "mp3_path": "chapter_01.mp3",
+      "vtt_path": "chapter_01.vtt",
+      "text_path": "chapter_01.txt",
+      "duration_seconds": 45.6,
+      "word_count": 95
+      // part/total_parts ausentes = capítulo único
+    },
+    {
+      "id": "memorias-postumas-02",           // mesmo id em todas as partes
+      "title": "Capítulo Longo",
+      "mp3_path": "chapter_02_part_01.mp3",
+      "vtt_path": "chapter_02_part_01.vtt",
+      "text_path": "chapter_02_part_01.txt",
+      "duration_seconds": 2700.0,
+      "word_count": 8000,
+      "part": 1,                              // só presentes em capítulos
+      "total_parts": 3                        // divididos (>9000 palavras)
+    }
+    // ... part 2/3, part 3/3
+  ]
+}
+```
+
+Capítulos divididos compartilham `id` e `title`; o que diferencia é o par
+`(part, total_parts)`. Capítulos não-divididos não trazem esses campos
+(ausência = capítulo único). Frontend usa o par para desenhar "Parte 2 de 3"
+no header do reader e para encadear playback automático.
 
 Para importar no PWA: zipar a pasta do livro (`scripts/package_book.sh` a
 partir da Fase 7) e importar via botão "Importar livro" no app.

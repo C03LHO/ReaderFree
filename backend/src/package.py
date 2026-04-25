@@ -45,6 +45,25 @@ def write_txt(text: str, output_path: Path) -> None:
     output_path.write_text(text, encoding="utf-8")
 
 
+def _normalize_chapter_entry(chapter: dict) -> dict:
+    """Limpa um dict de capítulo para serialização em `book.json`.
+
+    Regra de `part`/`total_parts`: se o caller passa qualquer um dos dois como
+    `None` (caso default de capítulo não-dividido), removemos os campos do
+    dict — ausência é o sinal semântico, não `null` explícito. Se o caller
+    passa ambos como ints válidos, preserva como veio.
+
+    Outros campos passam adiante intactos.
+    """
+    cleaned = dict(chapter)
+    part = cleaned.get("part")
+    total = cleaned.get("total_parts")
+    if part is None or total is None:
+        cleaned.pop("part", None)
+        cleaned.pop("total_parts", None)
+    return cleaned
+
+
 def write_book_json(
     book_id: str,
     title: str,
@@ -55,6 +74,13 @@ def write_book_json(
     output_dir: Path,
     mock: bool = False,
 ) -> None:
+    """Serializa `book.json` com metadados do livro e lista de capítulos.
+
+    Schema de cada capítulo (campos opcionais marcados com ?):
+        id, title, mp3_path, vtt_path, text_path,
+        duration_seconds, word_count,
+        part?, total_parts?    # presentes só em capítulos divididos
+    """
     data = {
         "id": book_id,
         "title": title,
@@ -62,7 +88,7 @@ def write_book_json(
         "created_at": created_at,
         "duration_seconds": round(float(duration_seconds), 3),
         "mock": mock,
-        "chapters": chapters,
+        "chapters": [_normalize_chapter_entry(c) for c in chapters],
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "book.json").write_text(

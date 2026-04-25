@@ -72,3 +72,123 @@ def test_slugify_remove_acentos_e_normaliza():
     assert slugify("Memórias Póstumas de Brás Cubas") == "memorias-postumas-de-bras-cubas"
     assert slugify("  Oi   mundo!  ") == "oi-mundo"
     assert slugify("@#$%") == ""
+
+
+def test_write_book_json_capitulos_divididos(tmp_path):
+    """Fase 1.5: part/total_parts aparecem em capítulos divididos e somem em
+    capítulos não-divididos, na mesma chamada."""
+    chapters = [
+        # Capítulo não-dividido — sem part/total_parts no dict.
+        {
+            "id": "livro-01",
+            "title": "Prefácio",
+            "mp3_path": "chapter_01.mp3",
+            "vtt_path": "chapter_01.vtt",
+            "text_path": "chapter_01.txt",
+            "duration_seconds": 45.6,
+            "word_count": 95,
+        },
+        # Capítulo dividido em 3 partes.
+        {
+            "id": "livro-02",
+            "title": "Capítulo Longo",
+            "mp3_path": "chapter_02_part_01.mp3",
+            "vtt_path": "chapter_02_part_01.vtt",
+            "text_path": "chapter_02_part_01.txt",
+            "duration_seconds": 2700.0,
+            "word_count": 8000,
+            "part": 1,
+            "total_parts": 3,
+        },
+        {
+            "id": "livro-02",
+            "title": "Capítulo Longo",
+            "mp3_path": "chapter_02_part_02.mp3",
+            "vtt_path": "chapter_02_part_02.vtt",
+            "text_path": "chapter_02_part_02.txt",
+            "duration_seconds": 2700.0,
+            "word_count": 8000,
+            "part": 2,
+            "total_parts": 3,
+        },
+        {
+            "id": "livro-02",
+            "title": "Capítulo Longo",
+            "mp3_path": "chapter_02_part_03.mp3",
+            "vtt_path": "chapter_02_part_03.vtt",
+            "text_path": "chapter_02_part_03.txt",
+            "duration_seconds": 2700.0,
+            "word_count": 8000,
+            "part": 3,
+            "total_parts": 3,
+        },
+        # Caller passou part=None explicitamente — deve sumir do JSON também.
+        {
+            "id": "livro-03",
+            "title": "Posfácio",
+            "mp3_path": "chapter_03.mp3",
+            "vtt_path": "chapter_03.vtt",
+            "text_path": "chapter_03.txt",
+            "duration_seconds": 30.0,
+            "word_count": 80,
+            "part": None,
+            "total_parts": None,
+        },
+    ]
+    write_book_json(
+        book_id="livro",
+        title="Livro de Teste",
+        author=None,
+        created_at="2026-04-25T00:00:00+00:00",
+        duration_seconds=8175.6,
+        chapters=chapters,
+        output_dir=tmp_path,
+        mock=False,
+    )
+    data = json.loads((tmp_path / "book.json").read_text(encoding="utf-8"))
+    chs = data["chapters"]
+    assert len(chs) == 5
+
+    # Capítulo não-dividido: ausência dos campos (não null).
+    assert "part" not in chs[0]
+    assert "total_parts" not in chs[0]
+
+    # Três partes do capítulo longo: campos presentes com valores corretos.
+    for i, expected_part in enumerate([1, 2, 3], start=1):
+        assert chs[i]["part"] == expected_part
+        assert chs[i]["total_parts"] == 3
+
+    # Caller passou None explicitamente — também sumiu (não virou null no JSON).
+    assert "part" not in chs[4]
+    assert "total_parts" not in chs[4]
+    raw = (tmp_path / "book.json").read_text(encoding="utf-8")
+    assert "null" not in raw or raw.count("null") == 1  # só o author=None vira null
+
+
+def test_write_book_json_part_sem_total_parts_e_descartado(tmp_path):
+    """Se um dos dois faltar/for None, ambos são descartados — meio-termo é
+    inválido."""
+    write_book_json(
+        book_id="x",
+        title="X",
+        author=None,
+        created_at="2026-04-25T00:00:00+00:00",
+        duration_seconds=10.0,
+        chapters=[
+            {
+                "id": "x-01",
+                "title": "Cap",
+                "mp3_path": "chapter_01.mp3",
+                "vtt_path": "chapter_01.vtt",
+                "text_path": "chapter_01.txt",
+                "duration_seconds": 10.0,
+                "word_count": 5,
+                "part": 1,
+                # total_parts ausente
+            },
+        ],
+        output_dir=tmp_path,
+    )
+    ch = json.loads((tmp_path / "book.json").read_text(encoding="utf-8"))["chapters"][0]
+    assert "part" not in ch
+    assert "total_parts" not in ch
