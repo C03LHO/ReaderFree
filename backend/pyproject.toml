@@ -28,9 +28,23 @@ dependencies = [
 [project.optional-dependencies]
 # ---- Pesadas: modelos de IA. Só instala na máquina-alvo (PC com GPU).
 #      Rode com:   uv pip install -e .[tts]
+#
+# Notas de pinning (confirmadas em validação real GPU RTX 4060 Ti, abr/2026):
+# - torch 2.5.1 é a versão sob a qual o stack inteiro (coqui-tts 0.24.3 +
+#   whisperx 3.3.1 + transformers 4.40.2) bate. 2.3.1 não suporta wheels
+#   recentes do whisperx; 2.6+ ainda não foi validado.
+# - transformers travado em 4.40.x: a 4.41 removeu LogitsWarper, que o
+#   coqui-tts 0.24.3 importa diretamente.
+#   https://github.com/huggingface/transformers/pull/31292
+# - setuptools travado em 69.5.x: a 70+ removeu pkg_resources do site-packages
+#   por default; whisperx 3.3.1 ainda usa pkg_resources internamente.
+# - Para GPU: depois do `uv pip install -e .[tts]`, reinstale torch/torchaudio
+#   pelo índice CUDA do PyTorch (ver README "Backend — primeiro uso").
 tts = [
-    "torch==2.3.1",
-    "torchaudio==2.3.1",
+    "torch==2.5.1",
+    "torchaudio==2.5.1",
+    "transformers==4.40.2",
+    "setuptools==69.5.1",
     "coqui-tts==0.24.3",
     "whisperx==3.3.1",
     "sounddevice==0.5.1",

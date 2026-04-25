@@ -49,6 +49,38 @@ pip install -e .
 python pipeline.py --help
 ```
 
+### Síntese real (com modelos): instalar `[tts]` e PyTorch CUDA
+
+Para usar TTS real (sem `--mock`), instale o extra `[tts]` e — se for usar GPU
+NVIDIA — reinstale o `torch`/`torchaudio` apontando para o índice CUDA do
+PyTorch. As versões pinadas no `pyproject.toml` (`torch==2.5.1`,
+`transformers==4.40.2`, `setuptools==69.5.1`, `coqui-tts==0.24.3`,
+`whisperx==3.3.1`) foram validadas juntas em GPU RTX 4060 Ti (abr/2026).
+
+```bash
+# Instala todas as deps de TTS + alinhamento (CPU build do torch).
+pip install -e ".[tts]"
+
+# Para GPU NVIDIA (CUDA 12.1): reinstala torch e torchaudio do índice CUDA.
+# Sem este passo o coqui-tts roda em CPU (~10x mais lento).
+pip install --index-url https://download.pytorch.org/whl/cu121 \
+    --force-reinstall torch==2.5.1 torchaudio==2.5.1
+
+# Verifique:
+python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
+# Saída esperada: True 12.1
+```
+
+**Por que cada constraint existe** (cada uma resolveu um conflito real durante
+a validação):
+
+- `transformers==4.40.2` — a 4.41+ removeu `LogitsWarper`, importado pelo
+  `coqui-tts 0.24.3`.
+- `setuptools==69.5.1` — a 70+ removeu `pkg_resources` por padrão; o
+  `whisperx 3.3.1` ainda usa internamente.
+- `torch==2.5.1` — versão sob a qual o stack inteiro
+  (coqui-tts + whisperx + transformers 4.40) bate.
+
 Gerar um audiobook a partir de um TXT (a partir da Fase 1):
 
 ```bash
@@ -128,7 +160,8 @@ partir da Fase 7) e importar via botão "Importar livro" no app.
 Em construção por fases.
 
 - [x] Fase 0 — Estrutura e esqueleto
-- [ ] Fase 1 — Pipeline TXT → MP3 + VTT (em andamento)
+- [x] Fase 1 — Pipeline TXT → MP3 + VTT (validado em GPU RTX 4060 Ti, abr/2026 — voz natural em pt-BR, deriva WhisperX <150ms, ~1min40s para o excerto de Brás Cubas)
+- [ ] Fase 1.5 — `book.json` com `part`/`total_parts` (preparação para capítulos divididos)
 - [ ] Fase 2 — Suporte a PDF e EPUB
 - [ ] Fase 3 — Voice cloning polido
 - [ ] Fase 4 — Frontend PWA básico

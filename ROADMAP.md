@@ -19,8 +19,28 @@ README. Nada gera áudio ainda.
 - **`--mock`** substitui TTS e alinhador por stubs determinísticos: silêncio
   proporcional (~15 chars/seg) e distribuição uniforme de palavras. Valida o
   pipeline de dados em máquinas sem GPU/torch.
-- Testes de unidade: `segment` (7), `package/VTT` (6), `extract/txt` (5) — 18
-  testes rodam sem torch.
+- Testes de unidade: 27 (segment, package/VTT, extract/txt, config, mock
+  regression) — rodam sem torch.
+
+**Validação real (abr/2026, GPU RTX 4060 Ti, Windows 11):** voz XTTS-v2 saiu
+natural em pt-BR; alinhamento WhisperX dentro do critério (<150 ms de deriva);
+geração do excerto de Brás Cubas em ~1 min 40 s na GPU. Conflitos de
+dependências resolvidos e pinados — ver notas no `backend/pyproject.toml`
+(transformers 4.40.2, setuptools 69.5.1, torch 2.5.1).
+
+## ⬜ Fase 1.5 — `book.json` com `part`/`total_parts`
+
+Preparação de schema para capítulos divididos (Fase 2 vai gerar splits quando
+um capítulo passar de ~8000 palavras — ver `docs/phase2-research.md` § 3).
+
+- `package.write_book_json` aceita `part`/`total_parts` opcionais por capítulo.
+  Quando `None`, os campos não aparecem no JSON (ausência = capítulo único, não
+  `null`).
+- Teste novo cobrindo capítulo dividido em 3 partes + capítulo não-dividido na
+  mesma chamada.
+- README documenta o schema completo do `book.json`.
+- Fixture `bras_cubas_excerpt.expected.vtt` não muda (o excerto tem ~95 palavras,
+  abaixo do limiar de divisão); regressão do mock segue verde.
 
 ## ⬜ Fase 2 — Suporte a PDF e EPUB
 
