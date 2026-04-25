@@ -50,10 +50,12 @@ tts = [
     "sounddevice==0.5.1",
 ]
 # ---- Dev: testes + lint. Roda em qualquer máquina, sem modelos.
+#      fpdf2 é só para gerar PDFs de fixture nos testes — não roda em runtime.
 dev = [
     "pytest==8.3.3",
     "pytest-cov==5.0.0",
     "ruff==0.7.4",
+    "fpdf2==2.8.1",
 ]
 
 [project.scripts]
