@@ -5,6 +5,25 @@ Usa o alinhador wav2vec2 do WhisperX com o texto conhecido como prior —
 mais preciso que transcrição livre e preserva a grafia exata do original.
 
 Duas implementações: `align` (real) e `align_mock` (distribuição uniforme).
+
+## Nota sobre trailing silence
+
+Validação real em GPU (Memórias Póstumas de Brás Cubas, abr/2026) confirmou
+que o último cue VTT termina ~400-500 ms antes do fim do MP3. **Isso não é
+deriva de alinhamento.** É o silêncio de cauda que o XTTS-v2 deixa naturalmente
+no fim do último chunk sintetizado.
+
+Comportamento determinístico:
+- O gap aparece em cada parte de capítulo dividido independentemente (cada
+  parte é uma sessão TTS+align separada). Não acumula entre partes.
+- O WhisperX faz forced alignment — palavras são ancoradas na forma de onda
+  da voz, sem acumulação de erro entre chunks dentro da mesma parte.
+
+**Como medir deriva real (se um dia precisar diagnosticar):** comparar
+timestamps de palavras-âncora conhecidas contra a waveform, não contra
+`audio_duration_seconds(mp3)`. Se o highlight no frontend "atrasa"
+progressivamente ao longo do capítulo, é deriva. Se ele para na última palavra
+~500ms antes do fim do arquivo e há silêncio depois, é cauda do XTTS — OK.
 """
 from __future__ import annotations
 

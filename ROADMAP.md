@@ -84,10 +84,14 @@ Implementação seguindo `docs/phase2-research.md` (memo aprovado).
   palavras), o longo dividido em 2 partes balanceadas, `book.json`
   correto, `--chapters-only 1,3` renumera sem gaps.
 
-**Pendente para validação real (em GPU):** rodar `--mock`-off num PDF e
-num EPUB reais para confirmar que XTTS + WhisperX seguram o split em
-partes (cada parte é uma sessão de TTS independente; deriva precisa
-ficar <150 ms também nas partes).
+**Validação real (abr/2026, GPU RTX 4060 Ti):** "Memórias Póstumas de Brás
+Cubas" (Project Gutenberg, EPUB) com limiar de split temporariamente
+reduzido para ~1000 palavras forçando divisão real do capítulo. WhisperX
+processou cada parte como sessão independente sem acumular deriva. O gap
+de ~460 ms entre fim do último cue VTT (501.791 s) e fim do MP3 (502.251 s)
+é trailing silence determinístico do XTTS-v2 — não dessincronização. Cada
+parte exibe o mesmo gap, sem somar entre partes. Distinção documentada em
+`backend/src/align.py`.
 
 ## ⬜ Fase 3 — Voice cloning polido
 
