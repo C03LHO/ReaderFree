@@ -205,7 +205,7 @@ Em construção por fases.
 
 - [x] Fase 0 — Estrutura e esqueleto
 - [x] Fase 1 — Pipeline TXT → MP3 + VTT (validado em GPU RTX 4060 Ti, abr/2026 — voz natural em pt-BR, deriva WhisperX <150ms, ~1min40s para o excerto de Brás Cubas)
-- [ ] Fase 1.5 — `book.json` com `part`/`total_parts` (preparação para capítulos divididos)
+- [x] Fase 1.5 — `book.json` com `part`/`total_parts` (preparação para capítulos divididos)
 - [ ] Fase 2 — Suporte a PDF e EPUB
 - [ ] Fase 3 — Voice cloning polido
 - [ ] Fase 4 — Frontend PWA básico

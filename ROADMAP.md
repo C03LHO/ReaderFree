@@ -28,7 +28,7 @@ geração do excerto de Brás Cubas em ~1 min 40 s na GPU. Conflitos de
 dependências resolvidos e pinados — ver notas no `backend/pyproject.toml`
 (transformers 4.40.2, setuptools 69.5.1, torch 2.5.1).
 
-## ⬜ Fase 1.5 — `book.json` com `part`/`total_parts`
+## ✅ Fase 1.5 — `book.json` com `part`/`total_parts`
 
 Preparação de schema para capítulos divididos (Fase 2 vai gerar splits quando
 um capítulo passar de ~8000 palavras — ver `docs/phase2-research.md` § 3).
