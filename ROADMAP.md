@@ -42,15 +42,52 @@ um capítulo passar de ~8000 palavras — ver `docs/phase2-research.md` § 3).
 - Fixture `bras_cubas_excerpt.expected.vtt` não muda (o excerto tem ~95 palavras,
   abaixo do limiar de divisão); regressão do mock segue verde.
 
-## ⬜ Fase 2 — Suporte a PDF e EPUB
+## ✅ Fase 2 — Suporte a PDF e EPUB
 
-- `extract/pdf.py`: `pypdf`. Detecta capítulos via outline/bookmarks. Avisa e
-  sugere `ocrmypdf` se não houver camada de texto.
-- `extract/epub.py`: `ebooklib` + `bs4`. Um capítulo por arquivo HTML do
-  spine; título via primeiro `<h1>`/`<h2>`.
-- `book.json` passa a suportar múltiplos capítulos.
-- `--chapters-only 1,3,5` para iteração rápida.
-- Teste com "Memórias Póstumas de Brás Cubas" (domínio público).
+Implementação seguindo `docs/phase2-research.md` (memo aprovado).
+
+- `extract/pdf.py`: `pypdf` (BSD, evita AGPL do PyMuPDF). Capítulos via
+  outline; fallback para regex de heading; senão capítulo único.
+  Detecção de PDF escaneado: chars/página < 100 → `UsageError` com
+  instrução copy-pasteable. Flag `--auto-ocr` opt-in invoca `ocrmypdf`.
+  Pós-processamento: dehifenização de fim de linha, normalização de
+  espaços preservando parágrafos.
+- `extract/epub.py`: `ebooklib` + `bs4`/`lxml` em modo tolerante.
+  Capítulos na ordem do spine; título via cascata h1→h2→title→filename.
+  `linear="no"` pulado por default com log explícito; flag
+  `--include-auxiliary` traz de volta. Recuperação tolerante: cascata
+  utf-8/cp1252/latin-1 no encoding, skip-com-warning de href inexistente,
+  abort só se zero capítulos extraíveis. Limpeza de HTML remove
+  `<script>`, `<style>`, tabelas, figuras, footnotes inline (`<sup>`,
+  `epub:type="footnote"`).
+- `chapter_split.py`: divide capítulos > 9000 palavras em partes de
+  ~8000 palavras balanceadas em fronteira de parágrafo. Critério em
+  palavras (não minutos), com tolerância 1.125× para evitar split
+  desnecessário. Degradação para fronteira de sentença em parágrafo único
+  gigante.
+- `sanitize.py`: limpeza pré-TTS dos ~20 casos residuais que o tokenizer
+  do XTTS não cobre (símbolos, emojis, controle, aspas/dashes
+  tipográficos). Não toca em números — XTTS lê em pt-br corretamente.
+- `chapter_range.py`: parser puro de `--chapters-only` aceitando lista,
+  range e combinações (`1,3,5-7,10`), com 20 testes cobrindo
+  sobreposição, range invertido, fora do range, lixo não-numérico.
+- `pipeline.py`: integra tudo. Capítulos divididos geram
+  `chapter_NN_part_MM.{mp3,vtt,txt}`; capítulos únicos seguem o naming
+  da Fase 1 (`chapter_NN.{mp3,vtt,txt}`). `book.json` ganha `part`/
+  `total_parts` apenas em entradas divididas (compatível com Fase 1.5).
+- Testes: 129 ao todo (segment, package, extract/txt, extract/pdf 18,
+  extract/epub 24, chapter_range 20, chapter_split 13, sanitize 25,
+  config, mock regression). Regressão do mock no Brás Cubas continua
+  byte-idêntica — sanitização e split não tocaram em capítulos curtos
+  sem símbolos exóticos.
+- Validação end-to-end com EPUB sintético: 3 capítulos (502, 12001, 502
+  palavras), o longo dividido em 2 partes balanceadas, `book.json`
+  correto, `--chapters-only 1,3` renumera sem gaps.
+
+**Pendente para validação real (em GPU):** rodar `--mock`-off num PDF e
+num EPUB reais para confirmar que XTTS + WhisperX seguram o split em
+partes (cada parte é uma sessão de TTS independente; deriva precisa
+ficar <150 ms também nas partes).
 
 ## ⬜ Fase 3 — Voice cloning polido
 
