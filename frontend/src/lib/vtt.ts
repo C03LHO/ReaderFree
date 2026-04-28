@@ -6,6 +6,7 @@ export type WordCue = {
   index: number;
 };
 
-export function parseVtt(_raw: string): WordCue[] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function parseVtt(raw: string): WordCue[] {
   throw new Error("Implementar na Fase 5.");
 }
