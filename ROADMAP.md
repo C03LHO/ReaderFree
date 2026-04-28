@@ -125,14 +125,59 @@ própria pode produzir o WAV com qualquer ferramenta de áudio e passar via
 
 ## ⬜ Fase 4 — Frontend PWA: biblioteca e player
 
-- Ingestão: (A) upload de ZIP do livro (jszip → IndexedDB) e (B) URL do
-  `book.json` remoto.
-- Tela biblioteca: grid de livros com título/autor/duração/progresso.
-- Tela reader: cabeçalho, área de texto scrollável, barra com play/pause,
-  ±15s, velocidade (0.75x–2x), progresso do capítulo.
-- `<audio>` HTML5 + **Media Session API** para controles na tela de bloqueio
-  do iPhone.
-- Estado persistido em IndexedDB (`idb`): livros, posição, velocidade.
+**Implementada; aguardando validação no iPhone** (depende da Fase 7 — deploy
+ou Tailscale — para o servidor estar acessível pelo Safari iOS).
+
+Implementação:
+
+- `src/lib/types.ts`: `BookManifest`, `ChapterEntry`, `BookProgress`, `Prefs`
+  espelhando o `book.json` do backend; `validateManifest` faz validação
+  runtime na importação.
+- `src/lib/storage.ts`: wrapper IndexedDB via `idb` com 4 stores:
+  - `books` — manifest inteiro do `book.json`.
+  - `assets` — Blobs MP3/VTT/TXT por `${bookId}/${filename}`, com índice
+    `by-book` para deletar tudo de um livro com cursor.
+  - `progress` — posição (chapterIndex + currentTime) por livro.
+  - `prefs` — singleton com `playbackRate` global.
+- `src/lib/import.ts`: `importBookFromZip(file, onProgress)` parsa via
+  `jszip`, valida `book.json`, confirma que todos os arquivos referenciados
+  existem, persiste cada asset com MIME type apropriado. Detecta prefixo
+  de pasta raiz (caso `zip -r livro.zip livro/`).
+- `src/components/Library.tsx` (client): grid de cartões com título/
+  autor/duração/capítulos/progresso/badge mock; ordenação por
+  `lastPlayedAt` desc; importação via `<input type="file">` hidden +
+  feedback por fase (lendo, validando, extraindo, concluído); exclusão
+  com `confirm()`.
+- `src/components/Player.tsx` (client): carregamento de Blobs do
+  IndexedDB com `URL.createObjectURL` + revoke no cleanup; hidratação
+  inicial de progresso e prefs; controles play/pause, ±15s, velocidade
+  (0.75/1/1.25/1.5/2x), capítulo anterior/próximo, barra de seek;
+  avanço automático no `onEnded`; persistência de progresso com debounce
+  de 1500ms.
+- **Media Session API**: `metadata` (title/artist/album) +
+  `setActionHandler` para play/pause/seekbackward/seekforward/
+  previoustrack/nexttrack. Lock-screen do iPhone vai exibir os
+  controles quando o PWA for instalado.
+- React 19 + Next 16 lint rules
+  (`react-hooks/set-state-in-effect`, `react-hooks/immutability`)
+  forçaram patterns idiomáticos novos: refs trocadas por state
+  (`pendingSeek`, `autoplayPending`), `useCallback` para funções
+  referenciadas em deps de effects.
+
+**Smoke test feito (sem iPhone real):**
+- `pnpm build` passa limpo, gera 5 páginas estáticas + manifest.
+- `pnpm exec tsc --noEmit` e `pnpm lint` zerados.
+- Dev server: `GET /` 200 com markup "Biblioteca/Importar ZIP";
+  `GET /reader/x` 200 (página de fallback "livro não encontrado");
+  `manifest.webmanifest` válido.
+
+**Pendente para fechar a Fase 4 com ✅:**
+- Smoke test no Chrome desktop: importar um ZIP gerado pelo backend,
+  abrir o reader, tocar áudio, conferir Media Session em controles de
+  hardware (teclado de mídia).
+- Validação no iPhone real (depois da Fase 7): instalar o PWA via
+  Safari, importar ZIP via iCloud Files / AirDrop, verificar lock-screen
+  com metadata + controles.
 
 ## ⬜ Fase 5 — Sincronização de texto (karaoke)
 
