@@ -22,12 +22,18 @@ def synthesize(
     chunks: list[str],
     output_wav: Path,
     voice: Path | None = None,
+    speaker: str | None = None,
     language: str = "pt",
     device: str = "auto",
     sample_rate: int = cfg.TTS_SAMPLE_RATE,
     progress_cb: ProgressCb = None,
 ) -> None:
     """Sintetiza chunks com XTTS-v2, concatena e grava em output_wav (WAV 24kHz mono).
+
+    Seleção de voz (precedência):
+        1. `voice` (Path para WAV/MP3) — voice cloning a partir do arquivo.
+        2. `speaker` (str) — speaker interno do XTTS-v2 pelo nome.
+        3. fallback — primeiro speaker interno disponível.
 
     Entre chunks é inserida uma pequena pausa de 200ms para fluidez.
     """
@@ -40,7 +46,7 @@ def synthesize(
     tts = TTS(model_name=cfg.XTTS_MODEL, progress_bar=False).to(resolved_device)
 
     pause = np.zeros(int(sample_rate * 0.2), dtype=np.float32)
-    speaker_kwargs = _speaker_kwargs(tts, voice)
+    speaker_kwargs = _speaker_kwargs(tts, voice, speaker)
 
     parts: list[np.ndarray] = []
     total = len(chunks)
@@ -62,15 +68,37 @@ def synthesize(
     sf.write(str(output_wav), full, sample_rate)
 
 
-def _speaker_kwargs(tts, voice: Path | None) -> dict:
-    """Se --voice foi passado, usa voice cloning. Senão, usa speaker pré-computado."""
+def _speaker_kwargs(tts, voice: Path | None, speaker: str | None = None) -> dict:
+    """Resolve a seleção de voz para os kwargs aceitos por `tts.tts`.
+
+    Precedência: voice (cloning) > speaker (interno) > fallback (primeiro interno).
+
+    Raises:
+        RuntimeError: speaker nomeado não existe na lista interna do XTTS,
+            ou modelo não expôs speakers e nenhum --voice foi passado.
+    """
     if voice is not None:
         return {"speaker_wav": str(voice)}
-    speakers = getattr(tts, "speakers", None)
-    if speakers:
-        return {"speaker": speakers[0]}
+
+    available = list(getattr(tts, "speakers", None) or [])
+
+    if speaker is not None:
+        if speaker not in available:
+            preview = "\n  ".join(sorted(available)[:20])
+            more = f"\n  ... ({len(available) - 20} mais)" if len(available) > 20 else ""
+            raise RuntimeError(
+                f"Speaker '{speaker}' não existe no XTTS-v2.\n"
+                f"Disponíveis ({len(available)}):\n  {preview}{more}\n"
+                f"Use `python pipeline.py voices` para listar todos."
+            )
+        return {"speaker": speaker}
+
+    if available:
+        return {"speaker": available[0]}
+
     raise RuntimeError(
-        "XTTS-v2 não expôs speakers pré-computados; passe --voice com um WAV de referência."
+        "XTTS-v2 não expôs speakers pré-computados; passe --voice com um WAV "
+        "de referência ou --speaker NOME (rode `python pipeline.py voices`)."
     )
 
 
@@ -83,6 +111,7 @@ def synthesize_mock(
     chunks: list[str],
     output_wav: Path,
     voice: Path | None = None,
+    speaker: str | None = None,
     language: str = "pt",
     device: str = "auto",
     sample_rate: int = cfg.TTS_SAMPLE_RATE,
@@ -92,6 +121,9 @@ def synthesize_mock(
     Gera silêncio com duração proporcional ao texto (~15 chars/segundo para
     pt-br). Não carrega modelos. Usado para validar o pipeline de dados em
     máquinas sem GPU ou sem `coqui-tts` instalado.
+
+    `voice` e `speaker` são aceitos para manter assinatura paralela com
+    `synthesize`, mas são ignorados em mock mode (silêncio é silêncio).
     """
     import numpy as np
     import soundfile as sf

@@ -1,14 +1,21 @@
 """ReaderFree — CLI principal do pipeline de geração de audiobooks.
 
 Exemplos:
-    # TXT
-    python pipeline.py build livro.txt --output ../library/meu_livro/
+    # Liste as vozes disponíveis no XTTS-v2
+    python pipeline.py voices
+
+    # TXT com voz escolhida
+    python pipeline.py build livro.txt --output ../library/meu_livro/ \\
+        --speaker "Claribel Dervla"
 
     # PDF (com OCR automático se necessário)
     python pipeline.py build livro.pdf --output ../library/x/ --auto-ocr
 
     # EPUB (incluindo apêndices linear="no")
     python pipeline.py build livro.epub --output ../library/y/ --include-auxiliary
+
+    # Voice cloning de arquivo (alternativa a --speaker)
+    python pipeline.py build livro.txt --output ../library/x/ --voice amostra.wav
 
     # Smoke test sem GPU
     python pipeline.py build livro.txt --output ../library/test --mock
@@ -103,7 +110,14 @@ def cli(ctx: click.Context) -> None:
     "--voice",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="WAV de referência para voice cloning (opcional).",
+    help="WAV/MP3 de referência para voice cloning a partir de arquivo.",
+)
+@click.option(
+    "--speaker",
+    type=str,
+    default=None,
+    help="Nome de um speaker interno do XTTS-v2 (recomendado). "
+         "Liste opções com `python pipeline.py voices`.",
 )
 @click.option("--language", default=cfg.DEFAULT_LANGUAGE, show_default=True, help="Idioma do XTTS.")
 @click.option(
@@ -148,6 +162,7 @@ def build(
     input_path: Path,
     output: Path,
     voice: Path | None,
+    speaker: str | None,
     language: str,
     device: str,
     chunk_chars: int,
@@ -171,12 +186,17 @@ def build(
     console.print(f"  output      : {output}")
     if paths.config_file:
         console.print(f"  config      : {paths.config_file}")
-    if not mock and voice is None:
+    if voice is not None and speaker is not None:
+        raise click.UsageError(
+            "Use --voice OU --speaker, não os dois. "
+            "--voice = cloning de arquivo; --speaker = voz interna do XTTS."
+        )
+    if not mock and voice is None and speaker is None:
         console.print(
-            "[yellow]⚠  nenhum --voice passado.[/yellow] Usando speaker interno do XTTS-v2 "
-            "(fallback para o primeiro speaker do modelo, e.g. 'Claribel Dervla'). "
-            "Qualidade varia e é só para smoke test — passe --voice amostra.wav para "
-            "voice cloning (15–30s de áudio limpo)."
+            "[yellow]⚠  nenhuma voz selecionada.[/yellow] Usando o primeiro speaker "
+            "interno do XTTS-v2 como fallback. Para escolher uma voz específica, "
+            "passe [cyan]--speaker NOME[/cyan] (rode `python pipeline.py voices` "
+            "para listar) ou [cyan]--voice arquivo.wav[/cyan] para cloning."
         )
 
     chapters = _extract(input_path, auto_ocr=auto_ocr, include_auxiliary=include_auxiliary)
@@ -262,6 +282,7 @@ def build(
                 chunks=chunks,
                 output_wav=wav_path,
                 voice=voice,
+                speaker=speaker,
                 language=language,
                 device=device,
                 sample_rate=cfg.TTS_SAMPLE_RATE,
@@ -316,6 +337,45 @@ def build(
 
 
 @cli.command()
+def voices() -> None:
+    """Lista as vozes internas do XTTS-v2.
+
+    Carrega o modelo (~10–30s no disco quente). Use o nome listado com
+    `build --speaker NOME`. Cada speaker é um perfil de voz pré-computado;
+    todos sintetizam pt-br corretamente apesar dos nomes em inglês.
+    """
+    paths = cfg.resolve_paths()
+    cfg.apply_model_cache_env(paths)
+    console.print("[bold]Carregando XTTS-v2...[/bold] (pode demorar na primeira vez)")
+    try:
+        from src.voices import list_speakers
+        speakers = list_speakers()
+    except ImportError:
+        console.print(
+            "[red]coqui-tts não instalado.[/red] "
+            "Rode `pip install -e .[tts]` para usar este comando."
+        )
+        return
+    except Exception as exc:  # pragma: no cover — rodapé operacional
+        console.print(f"[red]Falha ao carregar XTTS-v2:[/red] {exc}")
+        return
+
+    console.print(f"\n[bold]{len(speakers)} vozes disponíveis:[/bold]\n")
+    # Imprime em duas colunas para listas longas.
+    half = (len(speakers) + 1) // 2
+    left, right = speakers[:half], speakers[half:]
+    width = max((len(s) for s in left), default=0) + 2
+    for i in range(half):
+        l = left[i]
+        r = right[i] if i < len(right) else ""
+        console.print(f"  {l.ljust(width)}  {r}")
+    console.print(
+        "\nUse com: [cyan]python pipeline.py build livro.txt "
+        "--output ../library/x/ --speaker NOME[/cyan]"
+    )
+
+
+@cli.command()
 def doctor() -> None:
     """Verifica dependências (Python, ffmpeg, torch/CUDA, paths)."""
     import shutil
@@ -351,9 +411,9 @@ def doctor() -> None:
     console.print(f"  models    : {paths.models_dir}")
     console.print(f"  config    : {paths.config_file or '[não existe]'}")
     console.print(
-        "\n[dim]Lembrete: `build` sem --voice usa speaker interno do XTTS "
-        "(qualidade inconsistente). Para voice cloning, forneça uma amostra "
-        "WAV/MP3 de 15–30s via --voice.[/dim]"
+        "\n[dim]Lembrete: `build` sem --speaker/--voice usa o primeiro speaker "
+        "interno do XTTS como fallback. Para escolher uma voz, rode "
+        "`python pipeline.py voices` e use --speaker NOME.[/dim]"
     )
 
 
