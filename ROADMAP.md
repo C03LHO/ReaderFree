@@ -93,13 +93,35 @@ de ~460 ms entre fim do último cue VTT (501.791 s) e fim do MP3 (502.251 s)
 parte exibe o mesmo gap, sem somar entre partes. Distinção documentada em
 `backend/src/align.py`.
 
-## ⬜ Fase 3 — Voice cloning polido
+## ✅ Fase 3 — Seleção de voz (XTTS-v2 internos)
 
-- `backend/record_voice.py`: grava 30s via `sounddevice`, salva 24kHz mono,
-  valida SNR/clipping.
-- `backend/prepare_reference.py`: recebe WAV/MP3/MP4, resample/trim/normaliza
-  para amostra limpa de 15–30s.
-- README com fluxo de gravação.
+**Redesenho:** voice cloning a partir de gravação foi descartado como fluxo
+principal. O XTTS-v2 já vem com dezenas de speakers pré-computados; é mais
+valor com menos atrito do que pedir ao usuário para gravar/preparar uma
+amostra. `--voice arquivo.wav` continua funcionando como caminho alternativo
+(quem quer cloning de uma amostra arbitrária pode usar), mas o fluxo
+recomendado passa a ser `--speaker NOME`.
+
+- `src/voices.py`: `list_speakers()` carrega o XTTS-v2 lazy e retorna a lista
+  alfabética dos speakers internos.
+- Comando `python pipeline.py voices` imprime a lista em duas colunas + dica
+  de uso. Aplica `apply_model_cache_env` antes para reaproveitar o cache de
+  modelos. Falha graciosamente se `[tts]` não estiver instalado.
+- Flag `--speaker NOME` em `build`. Validação em `_speaker_kwargs` levanta
+  erro com lista dos disponíveis (até 20) + sugestão de rodar `voices` se o
+  speaker pedido não existir.
+- Conflito de flags: `--voice` + `--speaker` → `UsageError` explícito.
+- Sem nenhuma das duas: aviso amarelo + fallback para o primeiro speaker
+  interno (mantém comportamento da Fase 1 para smoke test).
+- 9 testes em `test_voices.py` com stub de `TTS.api` injetado em
+  `sys.modules` — validam ordenação alfabética, precedência voice > speaker
+  > fallback, erro de speaker inexistente com lista truncada em listas
+  longas, ausência de `coqui-tts` levantando ImportError.
+
+**Cancelados** (em relação à proposta original): `record_voice.py` e
+`prepare_reference.py` não serão escritos. Quem quiser cloning de gravação
+própria pode produzir o WAV com qualquer ferramenta de áudio e passar via
+`--voice`.
 
 ## ⬜ Fase 4 — Frontend PWA: biblioteca e player
 

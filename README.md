@@ -81,31 +81,42 @@ a validação):
 - `torch==2.5.1` — versão sob a qual o stack inteiro
   (coqui-tts + whisperx + transformers 4.40) bate.
 
-Gerar um audiobook a partir de um TXT (a partir da Fase 1):
+Gerar um audiobook a partir de um TXT/PDF/EPUB:
 
 ```bash
-# Recomendado: passe uma amostra de voz (15–30s, WAV ou MP3) para voice cloning.
-python pipeline.py build meu_livro.txt --output ../library/meu_livro/ --voice voices/minha_voz.wav
+# 1) Liste as vozes disponíveis (carrega o modelo na primeira vez):
+python pipeline.py voices
 
-# Smoke test sem amostra — usa um speaker interno do XTTS (qualidade varia).
+# 2) Escolha uma e gere o livro:
+python pipeline.py build meu_livro.txt --output ../library/meu_livro/ --speaker "Claribel Dervla"
+
+# Sem --speaker/--voice: usa o primeiro speaker interno como fallback (smoke test).
 python pipeline.py build meu_livro.txt --output ../library/meu_livro/
 
-# Sem GPU ou sem torch instalado: modo mock gera áudio silencioso + VTT sintético
-# para validar o pipeline de dados.
+# Voice cloning de arquivo (alternativa a --speaker):
+python pipeline.py build meu_livro.txt --output ../library/meu_livro/ --voice amostra.wav
+
+# Sem GPU ou sem torch instalado: modo mock gera áudio silencioso + VTT
+# sintético para validar o pipeline de dados.
 python pipeline.py build meu_livro.txt --output ../library/meu_livro/ --mock
 ```
 
-### Voice cloning — qualidade
+### Seleção de voz
 
-**Recomendação forte:** sempre passe `--voice` apontando para uma amostra de
-voz de 15–30 segundos, gravada em ambiente silencioso, 24 kHz mono. A Fase 3
-inclui scripts para gravar e preparar essa amostra (`backend/record_voice.py`,
-`backend/prepare_reference.py`).
+O XTTS-v2 vem com dezenas de speakers pré-computados (cada um é um perfil
+de voz treinado pela Coqui). Todos sintetizam pt-br corretamente apesar
+dos nomes em inglês. **Use `python pipeline.py voices` para listar e
+escolha uma com `--speaker NOME`.**
 
-Sem `--voice`, o XTTS-v2 cai no primeiro speaker interno do modelo (tipo
-"Claribel Dervla"). Isso funciona para **smoke test** (verificar que o
-pipeline roda), mas a qualidade/consistência varia muito entre execuções e
-entre chunks. Não use para audiobooks "de verdade".
+Alternativa: `--voice arquivo.wav` faz voice cloning a partir de uma
+amostra arbitrária (15–30s de áudio limpo recomendado). Não é o caminho
+principal — só vale quando você quer especificamente uma voz que não está
+entre os internos.
+
+Sem `--speaker` nem `--voice`, o pipeline cai no primeiro speaker interno
+do modelo (alfabeticamente). Isso funciona para smoke test, mas a
+qualidade/consistência depende da escolha — escolher conscientemente é
+sempre melhor.
 
 Os modelos XTTS-v2 e WhisperX são baixados do Hugging Face na primeira
 execução (~3 GB somados) e ficam em cache conforme as env vars resolvidas em
@@ -207,7 +218,7 @@ Em construção por fases.
 - [x] Fase 1 — Pipeline TXT → MP3 + VTT (validado em GPU RTX 4060 Ti, abr/2026 — voz natural em pt-BR, deriva WhisperX <150ms, ~1min40s para o excerto de Brás Cubas)
 - [x] Fase 1.5 — `book.json` com `part`/`total_parts` (preparação para capítulos divididos)
 - [x] Fase 2 — Suporte a PDF e EPUB (validada em GPU com Brás Cubas/EPUB; split de capítulo longo com WhisperX determinístico, trailing silence ~460ms é cauda do XTTS, não deriva)
-- [ ] Fase 3 — Voice cloning polido
+- [x] Fase 3 — Seleção de voz (redesenho: speakers internos do XTTS via `--speaker`, em vez de cloning de gravação própria)
 - [ ] Fase 4 — Frontend PWA básico
 - [ ] Fase 5 — Sincronização de texto (karaoke)
 - [ ] Fase 6 — Offline / service worker
