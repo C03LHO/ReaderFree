@@ -229,33 +229,136 @@ Decisões:
   áudio, alternar entre os 3 modos).
 - Validação no iPhone real (depois da Fase 7).
 
-## ⬜ Fase 6 — Offline / service worker
+## ⬜ Fase 6 — Refator arquitetural (servidor + library v2 + UI nova)
+
+**Mudança de direção pedida pelo usuário** após a Fase 5: ZIP-import morre,
+arquitetura vira "Natural Reader local" — servidor FastAPI persistente é
+fonte da verdade, frontend (web/desktop/iPhone) é cliente puro. Decisões
+detalhadas em `~/.claude/projects/.../memory/fase6_refator_arquitetural.md`.
+
+### O que muda
+
+- **Apaga** ZIP-import: `frontend/src/lib/import.ts`, botão "+ Importar ZIP",
+  campos relacionados de `storage.ts`.
+- **Library v1 plana** (`library/<livro>/`) **fica intocada como histórico**,
+  mas o novo servidor não enxerga. Reprocessa quem quiser migrar.
+- **`pipeline.py`** vira **biblioteca pura** (sem CLI Click). O servidor
+  importa as funções; scripts batch também podem importar diretamente.
+- **`book.json` schema v2**: + `cover_path`, `source_file`, `source_hash`,
+  `status`, `progress`, `failure_reason`, `schema_version: 2`. Caminhos
+  relativos.
+- **Library v2** em `%LOCALAPPDATA%\ReaderFree\library\{book_id}\` com
+  `meta.json` por livro + `_index.json` global (sem SQLite por enquanto;
+  entra na Fase 10+ quando lista virar problema).
+- **Idempotência por sha256** do arquivo de entrada — re-upload do mesmo
+  PDF retorna `book_id` existente.
+
+### Sub-fases
+
+#### ⬜ 6.1 — Backend FastAPI + worker + library v2
+
+- Servidor `backend/server.py` em FastAPI escutando `127.0.0.1:8765`
+  (sem auth, sem expor pra rede). Endpoints:
+  - `POST /books` (multipart upload PDF/EPUB; `?mock=true` opcional)
+  - `GET /books`, `GET /books/{id}`
+  - `GET /books/{id}/cover`, `/source`
+  - `GET /books/{id}/chapters/{n}/{audio,vtt,text,sentences}`
+  - `DELETE /books/{id}`
+  - `GET /books/{id}/progress` (polling 1s; SSE só se virar necessário)
+  - `POST /books/{id}/promote` (sobe na fila)
+  - `POST /queue/pause`, `POST /queue/resume`
+- Worker em thread separada: fila `_index.json`, sequencial, flag de
+  cancelamento entre chunks do XTTS, flag de pause global entre tarefas.
+- `pipeline.py` refatorado em biblioteca pura (`build_book(...)`).
+- Testes pytest+httpx para os endpoints + mock do worker para
+  determinismo (sem GPU).
+- Mantém comportamento de `--mock` como `mock=True` na função e como
+  `?mock=true` no endpoint. Smoke test do worker no excerto Brás Cubas
+  continua determinístico (mesma fixture VTT).
+
+#### ⬜ 6.2 — Capa + metadata refinada
+
+- `extract/cover.py` cascata:
+  1. PDF: primeira imagem da primeira página (>60% da área) via pypdf.
+  2. EPUB: `properties="cover-image"` (EPUB 3) ou `<meta name="cover">`
+     (EPUB 2) via ebooklib.
+  3. Fallback: PIL gera 600×900 com cor sólida derivada do hash do título
+     + título e autor centralizados em fonte system-default.
+- `extract/metadata.py` lê título/autor:
+  - PDF: `reader.metadata` → fallback nome do arquivo limpo.
+  - EPUB: `<dc:title>`, `<dc:creator>`.
+- Pillow entra como dep do backend.
+- Testes com fixtures de PDF e EPUB (com e sem capa nativa).
+
+#### ⬜ 6.3 — Frontend refatorado
+
+- **Apaga** `lib/import.ts`, `lib/storage.ts` (storage vira só cache de
+  preferências/progresso por livro), tela inicial de importar ZIP.
+- **Layout novo**: sidebar fina à esquerda com 3 ícones (Adicionar, 📚,
+  ⚙). Área principal contextual.
+- **Tela Adicionar**: dropzone PDF/EPUB. Cards de livros em fila com
+  barra de progresso atualizada via polling 1s.
+- **Tela Biblioteca**: grid de cards com capa 300×450, título, autor,
+  % lido. Hover mostra "Editar metadados" e "Apagar".
+- **Tela Player**: layout estilo Natural Reader. Modo padrão é
+  **destaque por frase** (consume `chapter_NN.sentences.json` do
+  servidor) com fundo âmbar suave. Tap numa frase pula o áudio.
+  Mantém modo "palavra" e "audio-only" como avançados (botões no
+  header). Player carrega assets via fetch da API (não mais IndexedDB).
+- **Tela Configurações**: idioma da UI, voz padrão (lista vinda de
+  `GET /voices`), velocidade padrão, caminho da biblioteca, URL do
+  servidor (pra iPhone). Token Bearer + QR code de pareamento entram
+  aqui.
+- **Tradução completa pt-BR** — sem string em inglês na UI final.
+
+#### ⬜ 6.4 — Desktop PyWebview
+
+- `desktop/main.py` lança uvicorn em thread + abre janela PyWebview
+  apontando para `http://127.0.0.1:8765`.
+- Fechamento da janela mata o servidor limpo.
+- `desktop/icon.ico`, `desktop/requirements.txt` (fastapi, uvicorn,
+  pywebview, pillow + tudo o que o backend precisa).
+- Documentação em `README` de como rodar (`python desktop/main.py`).
+
+## ⬜ Fase 7 — Offline / service worker
+
+**Renumeada** (era Fase 6 antes da refatoração de Fase 6).
 
 - **Serwist** (`@serwist/next` + `serwist`) com `src/app/sw.ts`.
-- Cache: app (CacheFirst), MP3/VTT/TXT (CacheFirst com limite), `book.json`
-  remoto (NetworkFirst).
+- Cache strategies adaptadas à nova API:
+  - App (HTML/CSS/JS Next): CacheFirst.
+  - `GET /books/{id}/chapters/.../audio|vtt|text|sentences`: CacheFirst
+    com limite por livro.
+  - `GET /books/{id}/cover`: CacheFirst.
+  - `GET /books`, `GET /books/{id}`, `GET /books/{id}/progress`:
+    NetworkFirst (sempre tenta servidor, fallback cache).
 - Indicador "offline" no header.
-- Tela "downloads": tamanho em cache, limpar cache por livro.
-- Testar em modo avião com o app instalado na home screen do iPhone.
+- Tela "downloads" (sub-tela de Configurações): tamanho em cache,
+  limpar por livro.
+- Testar em modo avião com PWA instalada na home screen do iPhone.
 
-## ⬜ Fase 7 — Deploy e acesso do iPhone
+## ⬜ Fase 8 — Deploy e acesso do iPhone
 
-Três caminhos documentados:
+**Renumeada** (era Fase 7).
 
-- **(A) AirDrop + Cloudflare Pages**: PC gera, zipa, AirDrop pro iPhone,
-  importa no PWA (hospedado no CF Pages).
-- **(B) Cloudflare Pages + iCloud Drive**: livros no iCloud, importa do
-  Files.app dentro do PWA.
-- **(C) Tailscale + servidor local**: `python -m http.server` em `library/`,
-  PWA em modo "URL do manifesto".
+Foco: rodar servidor no PC e acessar do iPhone via Tailscale.
 
-Scripts em `scripts/`:
+- **Caminho principal**: usuário liga "expor pra Tailscale" nas
+  Configurações do app desktop. Servidor passa a escutar `0.0.0.0:8765`
+  e gera token Bearer.
+- App desktop mostra QR code com `https://<tailscale-name>:8765?token=...`
+  pra escanear no iPhone Safari → adiciona aos PWAs instalados.
+- iPhone PWA: tela de "primeira conexão" pede URL+token (ou QR scan
+  via `<input capture>`).
+- **Caminho alternativo (LAN sem Tailscale)**: descobre IP via
+  `ipconfig`, mostra URL `http://<IP>:8765`. Funciona em casa, não fora.
+- **Não vamos** mais hospedar no Cloudflare Pages — frontend é servido
+  pelo servidor local. Internet aberta entra só se virar requisito real.
 
-- `package_book.sh` — zipa `library/X/`.
-- `serve_library.sh` — HTTP com CORS habilitado.
-- `deploy_frontend.sh` — build + deploy CF Pages.
+## ⬜ Fase 9 — Empacotamento desktop (Windows)
 
-## ⬜ Fase 7.5 — Empacotamento desktop (Windows)
+**Renumeada** (era Fase 7.5). Muito mais simples agora porque a Fase 6.4
+já entregou um desktop funcional — só falta empacotar.
 
 Objetivo: instalador pequeno (~50–100 MB) que qualquer pessoa executa em
 máquina Windows limpa e usa. **Não monolítico PyInstaller**; Python embeddable
@@ -338,9 +441,9 @@ Estes foram implementados preventivamente:
   modelos.
 - Desinstalar: `%LOCALAPPDATA%\ReaderFree\` completamente removido.
 
-## ⬜ Fase 8 — Polimento (backlog)
+## ⬜ Fase 10 — Polimento (backlog)
 
-Só se 0–7.5 estiverem sólidas.
+**Renumeada** (era Fase 8). Só se 0–9 estiverem sólidas.
 
 - Bookmarks.
 - Highlight manual + export markdown.

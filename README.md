@@ -219,7 +219,10 @@ Em construção por fases.
 - [x] Fase 1.5 — `book.json` com `part`/`total_parts` (preparação para capítulos divididos)
 - [x] Fase 2 — Suporte a PDF e EPUB (validada em GPU com Brás Cubas/EPUB; split de capítulo longo com WhisperX determinístico, trailing silence ~460ms é cauda do XTTS, não deriva)
 - [x] Fase 3 — Seleção de voz (redesenho: speakers internos do XTTS via `--speaker`, em vez de cloning de gravação própria)
-- [x] Fase 4 — Frontend PWA básico (biblioteca + player com Media Session API; smoke test passou em build/typecheck/lint, validação no iPhone fica para depois da Fase 7)
-- [x] Fase 5 — Sincronização de texto (karaoke; parser VTT + 20 testes verdes; smoke build/typecheck/lint passou; validação no iPhone fica para depois da Fase 7)
-- [ ] Fase 6 — Offline / service worker
-- [ ] Fase 7 — Deploy e acesso do iPhone
+- [x] Fase 4 — Frontend PWA básico (biblioteca + player com Media Session API)
+- [x] Fase 5 — Sincronização de texto word-level (parser VTT + 20 testes verdes; modo karaoke funcional)
+- [ ] Fase 6 — Refator arquitetural: servidor FastAPI + library v2 + UI nova (em andamento)
+- [ ] Fase 7 — Offline / service worker (cache da nova API)
+- [ ] Fase 8 — Deploy e acesso do iPhone (Tailscale + token Bearer)
+- [ ] Fase 9 — Empacotamento desktop Windows (instalador .exe)
+- [ ] Fase 10 — Polimento (backlog)
