@@ -181,13 +181,53 @@ Implementação:
 
 ## ⬜ Fase 5 — Sincronização de texto (karaoke)
 
-- `lib/vtt.ts`: parser WebVTT → `WordCue[]`.
-- Binding: `requestAnimationFrame` durante play, busca binária pelo cue ativo.
-- `TextViewer`: spans por palavra com `data-word-index`. Highlight âmbar na
-  ativa, cinza nas já-lidas. Auto-scroll com debounce.
-- Tap na palavra pula o áudio (`audio.currentTime = cue.start`).
-- Modos "só áudio" / "só texto" / "ambos".
-- Virtualização com `react-window` para capítulos >2000 palavras.
+**Implementada; aguardando validação no iPhone** (mesma dependência da
+Fase 4 — depende da Fase 7 ou Tailscale para teste no Safari iOS real).
+
+Implementação:
+
+- `src/lib/vtt.ts` (real, não mais stub): `parseVtt(raw)` retorna
+  `WordCue[]` tolerando CRLF/CR/blocos NOTE/identificador opcional;
+  `parseTimestamp(HH:MM:SS.mmm)` em segundos; `findActiveCueIndex(cues,
+  time)` é busca binária O(log n) que cobre os 3 casos de borda
+  (antes do primeiro / gap entre cues / depois do último — este último
+  cobre o trailing silence ~500ms do XTTS documentado em
+  `backend/src/align.py`).
+- `src/components/TextViewer.tsx` (real): spans por palavra com
+  `data-word-index`. Highlight CSS-driven via seletor
+  `[data-active-index="N"] span[data-word-index="N"]` — o React só
+  atualiza um atributo no parent, o(1) por mudança de palavra
+  independente do tamanho do capítulo. Tap-to-seek via delegação,
+  auto-scroll com `scrollIntoView({block:"center"})` que pausa 4s
+  após scroll manual do usuário.
+- `src/components/Player.tsx` (atualizado): carrega VTT junto com
+  MP3/TXT, `requestAnimationFrame` enquanto tocando atualiza
+  `currentTime` granular (~16ms), `activeWordIndex` é derivado via
+  `useMemo` (não state próprio, evita lint
+  `react-hooks/set-state-in-effect`). Três modos visuais por botões
+  no header: karaoke (✦, default), plain (📖, texto rolante sem
+  highlight), audio-only (🎧).
+- `vitest.config.ts` + `pnpm test`: 20 testes em `src/lib/vtt.test.ts`
+  cobrindo todos os casos de borda do parser e da busca binária. Tudo
+  roda em 17ms (funções puras, environment node, sem jsdom).
+
+Decisões:
+- **Sem `react-window`**. Capítulos divididos pela Fase 2 ficam ≤9000
+  palavras; 9000 spans em React 19 + Tailwind renderizam em ~30ms na
+  primeira vez e ~1ms por mudança de palavra. Virtualização entra só
+  quando virar problema concreto.
+- **`activeWordIndex` derivado de `currentTime` via useMemo**, em vez
+  de state separado atualizado por rAF. Garante consistência entre os
+  caminhos rAF (tocando) e `onTimeUpdate` (pausado/seek).
+- **Trailing silence preservado**: a busca binária mantém o highlight
+  na última palavra durante os ~500ms de cauda do XTTS — não tenta
+  esticar o cue.
+
+**Pendente para fechar a Fase 5 com ✅:**
+- Smoke test no Chrome desktop com um livro real (importar ZIP, abrir
+  reader, conferir highlight sincronizado, tap em palavra pulando o
+  áudio, alternar entre os 3 modos).
+- Validação no iPhone real (depois da Fase 7).
 
 ## ⬜ Fase 6 — Offline / service worker
 
