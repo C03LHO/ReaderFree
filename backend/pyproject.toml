@@ -11,7 +11,7 @@ authors = [{ name = "ReaderFree" }]
 readme = { text = "Backend do ReaderFree — ver README.md na raiz.", content-type = "text/plain" }
 
 # ---- Leves: rodam em qualquer máquina, inclusive sem GPU ou com --mock.
-#      Versões fixadas (==) — o instalador Windows (Fase 7.5) depende disso.
+#      Versões fixadas (==) — o instalador Windows (Fase 9) depende disso.
 dependencies = [
     "click==8.1.7",
     "rich==13.9.4",
@@ -23,6 +23,12 @@ dependencies = [
     "pydub==0.25.1",
     "soundfile==0.12.1",
     "numpy==1.26.4",
+    # Servidor + capa procedural (Fase 6.1+).
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "python-multipart==0.0.19",
+    "pydantic==2.10.4",
+    "Pillow==11.0.0",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +62,7 @@ dev = [
     "pytest-cov==5.0.0",
     "ruff==0.7.4",
     "fpdf2==2.8.1",
+    "httpx==0.28.1",  # cliente HTTP pra testar endpoints da Fase 6.1+
 ]
 
 [project.scripts]

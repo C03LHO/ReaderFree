@@ -110,6 +110,34 @@ def resolve_device(device: str) -> str:
         return "cpu"
 
 
+# ---- Library v2 (Fase 6) ------------------------------------------------
+
+LIBRARY_INDEX_FILE = "_index.json"
+"""Nome do arquivo de índice global em `library_dir/`. Reflete metadados
+agregados de todos os livros + estado da fila. Reconstrutível varrendo a
+pasta se corromper (cada `meta.json` por livro é a fonte da verdade)."""
+
+BOOK_META_FILE = "meta.json"
+"""Nome do arquivo de metadados por livro em `library_dir/<book_id>/`."""
+
+SCHEMA_VERSION = 2
+"""Versão do schema do `meta.json`. v1 era a Fase 1 (book.json plano);
+v2 inclui cover_path, source_file, source_hash, status, progress."""
+
+
+def book_dir(library_dir: Path, book_id: str) -> Path:
+    """Diretório de um livro específico em library v2."""
+    return library_dir / book_id
+
+
+def book_meta_path(library_dir: Path, book_id: str) -> Path:
+    return book_dir(library_dir, book_id) / BOOK_META_FILE
+
+
+def library_index_path(library_dir: Path) -> Path:
+    return library_dir / LIBRARY_INDEX_FILE
+
+
 @dataclass(frozen=True)
 class PipelineConfig:
     language: str = DEFAULT_LANGUAGE
