@@ -255,7 +255,7 @@ detalhadas em `~/.claude/projects/.../memory/fase6_refator_arquitetural.md`.
 
 ### Sub-fases
 
-#### ⬜ 6.1 — Backend FastAPI + worker + library v2
+#### ✅ 6.1 — Backend FastAPI + worker + library v2
 
 - Servidor `backend/server.py` em FastAPI escutando `127.0.0.1:8765`
   (sem auth, sem expor pra rede). Endpoints:
