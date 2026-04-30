@@ -276,7 +276,7 @@ detalhadas em `~/.claude/projects/.../memory/fase6_refator_arquitetural.md`.
   `?mock=true` no endpoint. Smoke test do worker no excerto Brás Cubas
   continua determinístico (mesma fixture VTT).
 
-#### ⬜ 6.2 — Capa + metadata refinada
+#### ✅ 6.2 — Capa + metadata refinada
 
 - `extract/cover.py` cascata:
   1. PDF: primeira imagem da primeira página (>60% da área) via pypdf.
