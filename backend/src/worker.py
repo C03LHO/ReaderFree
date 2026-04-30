@@ -88,9 +88,11 @@ def stop(timeout: float = 5.0) -> None:
             _state.cancel_requests.add(_state.current_book_id)
         _state.stop.set()
         _state.paused.clear()  # libera o sleep da pausa
-    _thread.join(timeout=timeout)
-    _thread = None
-    _state = None
+        thread_to_join = _thread
+    thread_to_join.join(timeout=timeout)
+    with _state_lock:
+        _thread = None
+        _state = None
 
 
 def pause() -> None:

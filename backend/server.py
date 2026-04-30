@@ -30,7 +30,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from src import config as cfg
+from src import cover as cover_mod
 from src import library as lib
+from src import metadata as metadata_mod
 from src import worker
 
 # Windows console em cp1252 quebra com →/ç. Garante UTF-8 cedo.
@@ -234,8 +236,12 @@ async def upload_book(
         tmp.unlink(missing_ok=True)
         return UploadResponse(book_id=existing, duplicate=True)
 
-    # Novo livro: gera id, move arquivo pra dentro da pasta dele, persiste meta.
-    book_title = title or Path(file.filename or "Sem título").stem.replace("_", " ").strip()
+    # Novo livro: extrai metadados nativos (title/author) com fallback no
+    # nome do arquivo. Quem importou pode override via query params.
+    info = metadata_mod.extract_info(tmp)
+    book_title = title or info.title
+    book_author = author or info.author
+
     book_id = lib.make_book_id(book_title)
     # Garante unicidade caso o slug colida (livros de mesmo título).
     library_dir_books = {b.id for b in lib.list_books(library_dir)}
@@ -250,13 +256,28 @@ async def upload_book(
     final_source = book_dir / f"source{suffix}"
     tmp.replace(final_source)
 
+    # Capa: tenta extrair nativa do PDF/EPUB; se falhar, fallback procedural
+    # com cor derivada do hash do título. Nunca falha — sempre escreve um
+    # cover.jpg.
+    cover_path: Optional[str] = None
+    try:
+        cover_path = cover_mod.write_cover(
+            source_path=final_source,
+            out_path=book_dir / "cover.jpg",
+            title=book_title,
+            author=book_author,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("upload: falha ao gerar capa pra %s: %s", book_id, exc)
+
     meta = lib.BookMeta(
         id=book_id,
         title=book_title,
-        author=author,
+        author=book_author,
         created_at=lib.now_iso(),
         source_file=final_source.name,
         source_hash=source_hash,
+        cover_path=cover_path,
         mock=mock,
         status="queued",
     )
