@@ -62,7 +62,8 @@ dev = [
     "pytest-cov==5.0.0",
     "ruff==0.7.4",
     "fpdf2==2.8.1",
-    "httpx==0.28.1",  # cliente HTTP pra testar endpoints da Fase 6.1+
+    "httpx==0.28.1",          # cliente HTTP pra testar endpoints da Fase 6.1+
+    "pytest-asyncio==0.24.0", # @pytest.mark.asyncio nos testes do servidor
 ]
 
 [project.scripts]
@@ -78,6 +79,8 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 100
